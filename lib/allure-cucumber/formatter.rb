@@ -22,7 +22,8 @@ module AllureCucumber
     
     # Start the test suite
     def before_feature(feature)
-      @tracker.feature_name = feature.name
+      feature_identifier = ENV['FEATURE_IDENTIFIER'] && "#{ENV['FEATURE_IDENTIFIER']} - "
+      @tracker.feature_name = "#{feature_identifier}#{feature.name.gsub(/\n/, " ")}"
       AllureRubyAdaptorApi::Builder.start_suite(@tracker.feature_name)
     end
 
@@ -82,7 +83,7 @@ module AllureCucumber
           @tracker.step_name = test_step.name
           start_step
         else
-          @deferred_before_test_steps << {:step => test_step, :timestamp => timestamp}
+          @deferred_before_test_steps << {:step => test_step, :timestamp => Time.now}
         end        
       end
     end
@@ -93,7 +94,7 @@ module AllureCucumber
           status = step_status(result)
           stop_step(status)
         else
-          @deferred_after_test_steps << {:step => test_step, :result => result, :timestamp => timestamp}
+          @deferred_after_test_steps << {:step => test_step, :result => result, :timestamp => Time.now}
         end
       end
     end
@@ -112,7 +113,6 @@ module AllureCucumber
       # For background steps defer multiline attachment
       if @tracker.scenario_name.nil?
         @deferred_before_test_steps[-1].merge!({:multiline_arg => multiline_arg})
-        puts "#{@deferred_before_test_steps}"
       else
         attach_multiline_arg_to_file(multiline_arg)
       end
@@ -172,6 +172,9 @@ module AllureCucumber
     end
     
     def stop_test(result)
+      if @deferred_before_test_steps != []
+        result[:started_at] = @deferred_before_test_steps[0][:timestamp]
+      end
       if @tracker.scenario_name
         AllureRubyAdaptorApi::Builder.stop_test(@tracker.feature_name, @tracker.scenario_name, result)
         @tracker.scenario_name = nil
@@ -186,10 +189,6 @@ module AllureCucumber
 
     def stop_step(status, step_name = @tracker.step_name)
       AllureRubyAdaptorApi::Builder.stop_step(@tracker.feature_name, @tracker.scenario_name, step_name, status) 
-    end
-
-    def timestamp(time = nil)
-      ((time || Time.now).to_f * 1000).to_i
     end
     
   end  
